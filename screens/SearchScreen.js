@@ -9,39 +9,14 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 
 
 
-const PurchaseCard = ({purchase, phone, addTransaction}) => {
+const PurchaseCard = ({purchase, phone, addTransaction ,confirmDelete,setSelectedTX,setVisible,visible,hideModal}) => {
     const {purchaseDate, amount, amountReceived, itemBought, goldRate, id} = purchase;
-    const [selectedTX, setSelectedTX] = useState("");
     const date = useMemo(()=>new Date(purchaseDate).toLocaleString());
     const totalReceived = useMemo(()=>{
         return amountReceived.reduce((prev,curr)=>prev+curr.amount,0);
     },[amountReceived]);
-    const [visible, setVisible] = useState(false);
-    const hideModal = () => {
-        setVisible(false);
-    };
-    
-
-    const confirmDelete = async () => {
-        const user = JSON.parse(await AsyncStorage.getItem(phone));
-        let currPurchase = user.purchases.find(purchase => purchase.id === id);
-        currPurchase={
-            ...currPurchase,
-            amountReceived: amountReceived.filter(tx=>tx.id!==selectedTX),
-        };
-        const finalObj = {
-            ...user,
-            purchases: [...user.purchases.filter(purchase => purchase.id !== id), currPurchase]
-        };
-        await AsyncStorage.setItem(phone, JSON.stringify(finalObj));
-        setSelectedTX('');
-        hideModal();
-    };
     const editTransaction = async () => {
-
     }
-
-
     return (
         <View style={{backgroundColor: "#1C1C1C", marginVertical: 16, borderRadius: 4, padding: 16,}}>
             <Text style={styles.clientText}>Purchase Date: {date}</Text>
@@ -73,7 +48,7 @@ const PurchaseCard = ({purchase, phone, addTransaction}) => {
                 )
             })}
             <Modal visible={visible} onDismiss={hideModal} contentContainerStyle={styles.modalContainerStyle}>
-                <TouchableOpacity onPress={confirmDelete} style={styles.modalBTN}><Text style={styles.modalBTNText}>Confirm Delete</Text></TouchableOpacity>
+                <TouchableOpacity onPress={()=>confirmDelete(phone,id,amountReceived)} style={styles.modalBTN}><Text style={styles.modalBTNText}>Confirm Delete</Text></TouchableOpacity>
                 <TouchableOpacity onPress={hideModal} style={styles.modalBTN}><Text style={styles.modalBTNText}>Cancel</Text></TouchableOpacity>
             </Modal>
         </View>
@@ -92,14 +67,33 @@ const SearchScreen = () => {
     const hideModal = () => setVisible(false);  
     const isFocused = useIsFocused();
     const [activeClient, setActiveClient] = useState({});
-
     // add tx states
     const [addModalVisible, setAddModalVisible] = useState(false);
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [purchaseIDtoAddTX, setPurchaseIDtoAddTX] = useState("");
     const [purchaseDate, setPurchaseDate] = useState(new Date());
     const [amountReceived, setAmountReceived] = useState(0);
-
+    const [visibleDelete, setVisibleDelete] = useState(false);
+    const [selectedTX, setSelectedTX] = useState("");
+    const hideDeleteModal = () => {
+        setVisibleDelete(false);
+    };
+    const confirmDeleteAmount = async (phone,id,amountReceived) => {
+        const user = JSON.parse(await AsyncStorage.getItem(phone));
+        let currPurchase = user.purchases.find(purchase => purchase.id === id);
+        currPurchase={
+            ...currPurchase,
+            amountReceived: amountReceived.filter(tx=>tx.id!==selectedTX),
+        };
+        const finalObj = {
+            ...user,
+            purchases: [...user.purchases.filter(purchase => purchase.id !== id), currPurchase]
+        };
+        await AsyncStorage.setItem(phone, JSON.stringify(finalObj));
+        setSelectedTX('');
+        setActiveClient(finalObj);
+        hideDeleteModal();
+    };
     const hideAddModal = () => {
         setAddModalVisible(false);
         setAmountReceived(0);
@@ -107,7 +101,9 @@ const SearchScreen = () => {
         setPurchaseIDtoAddTX("");
         setAmountReceived(0);
     };
-
+    useEffect(()=>{
+        console.log(activeClient,'active client is')
+    })
     const addTransaction = (id) => {
         setPurchaseIDtoAddTX(id);
         setAddModalVisible(true);
@@ -234,7 +230,7 @@ const SearchScreen = () => {
             <Text>Phone: {activeClient.phone}</Text>
             <Text>Name: {activeClient.name}</Text>
             {activeClient.purchases.map((purchase) => {
-                return <PurchaseCard key={purchase.id} purchase={purchase} phone={activeClient.phone} addTransaction={addTransaction}/>
+                return <PurchaseCard key={purchase.id} purchase={purchase} phone={activeClient.phone} addTransaction={addTransaction} confirmDelete={confirmDeleteAmount} setSelectedTX={setSelectedTX} visible={visibleDelete} setVisible={setVisibleDelete} hideModal={hideDeleteModal}/>
             })}
         </ScrollView>}
         <Modal visible={visible} onDismiss={hideModal} contentContainerStyle={styles.modalContainerStyle}>
