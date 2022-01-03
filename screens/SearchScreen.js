@@ -12,9 +12,10 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 const PurchaseCard = ({purchase, phone, addTransaction ,confirmDelete,setSelectedTX,setVisible,visible,hideModal}) => {
     const {purchaseDate, amount, amountReceived, itemBought, goldRate, id} = purchase;
     const date = useMemo(()=>new Date(purchaseDate).toLocaleString());
-    const totalReceived = useMemo(()=>{
-        return amountReceived.reduce((prev,curr)=>prev+curr.amount,0);
-    },[amountReceived]);
+    const [totalReceived, setTotalReceived] = useState(0);
+    useEffect(()=>{
+        setTotalReceived(amountReceived.reduce((prev,curr)=>prev+curr.amount,0));
+    });
     const editTransaction = async () => {
     }
     return (
@@ -41,7 +42,7 @@ const PurchaseCard = ({purchase, phone, addTransaction ,confirmDelete,setSelecte
                             <TouchableOpacity style={{backgroundColor:"#ED5E68", paddingHorizontal: 6, paddingVertical:4 , borderRadius:2,}} onPress={()=>{
                                 setSelectedTX(history.id);
                                 setVisible(true);
-                            }} disabled={amountReceived.length === 1}><Text style={styles.clientText}>X</Text></TouchableOpacity>
+                            }}><Text style={styles.clientText}>X</Text></TouchableOpacity>
                             </View>
                         </View>
                     </View>
@@ -67,6 +68,7 @@ const SearchScreen = () => {
     const hideModal = () => setVisible(false);  
     const isFocused = useIsFocused();
     const [activeClient, setActiveClient] = useState({});
+    const [lastSearchType, setLastSearchType] = useState("all");
     // add tx states
     const [addModalVisible, setAddModalVisible] = useState(false);
     const [showDatePicker, setShowDatePicker] = useState(false);
@@ -87,13 +89,18 @@ const SearchScreen = () => {
         };
         const finalObj = {
             ...user,
-            purchases: [...user.purchases.filter(purchase => purchase.id !== id), currPurchase]
+            purchases: !!currPurchase.amountReceived.length ? [...user.purchases.filter(purchase => purchase.id !== id), currPurchase] : user.purchases.filter(purchase => purchase.id !== id)
         };
         await AsyncStorage.setItem(phone, JSON.stringify(finalObj));
         setSelectedTX('');
+        if(lastSearchType==="all")
+        await findAllUsers();
+        else
+        await findUsers();
         setActiveClient(finalObj);
         hideDeleteModal();
     };
+
     const hideAddModal = () => {
         setAddModalVisible(false);
         setAmountReceived(0);
@@ -101,9 +108,6 @@ const SearchScreen = () => {
         setPurchaseIDtoAddTX("");
         setAmountReceived(0);
     };
-    useEffect(()=>{
-        console.log(activeClient,'active client is')
-    })
     const addTransaction = (id) => {
         setPurchaseIDtoAddTX(id);
         setAddModalVisible(true);
@@ -113,6 +117,7 @@ const SearchScreen = () => {
     },[]);
 
     const setPhoneNumber = useCallback((input)=>{
+        setLastSearchType("one");
         setPhone(cleanNumber(input).slice(0,10));
     },[setPhone]);
 
@@ -121,20 +126,6 @@ const SearchScreen = () => {
         const numbers = await AsyncStorage.getAllKeys();
         for(const num of numbers) 
             matches.push(JSON.parse(await AsyncStorage.getItem(num)));
-        matches = matches.map(match => {
-                let totalReceived = 0;
-                for(const purchase of match.purchases) {
-                    totalReceived += purchase.amountReceived.reduce((acc,curr)=>acc+parseInt(curr.amount),0);
-                }
-                const total = match.purchases.reduce((acc,curr)=>{
-                    return parseInt(acc) + parseInt(curr.amount);
-                },0);
-                return {
-                    ...match,
-                    total: `${total}`,
-                    totalReceived: `${totalReceived}` 
-                }
-            })
         setSearchClients(matches);
     }
 
@@ -147,20 +138,6 @@ const SearchScreen = () => {
                     matches.push(JSON.parse(await AsyncStorage.getItem(num)));
                 }
             }
-            matches = matches.map(match => {
-                let totalReceived = 0;
-                for(const purchase of match.purchases) {
-                    totalReceived += purchase.amountReceived.reduce((acc,curr)=>acc+parseInt(curr.amount),0);
-                }
-                const total = match.purchases.reduce((acc,curr)=>{
-                    return parseInt(acc) + parseInt(curr.amount);
-                },0);
-                return {
-                    ...match,
-                    total: `${total}`,
-                    totalReceived: `${totalReceived}` 
-                }
-            })
             setSearchClients(matches);
         }
     }
@@ -192,7 +169,7 @@ const SearchScreen = () => {
 
     const confirmTransactionAdd = async () => {
         const tx = {
-            amount: amountReceived,
+            amount: Number(amountReceived),
             date: purchaseDate,
             id: uuid.v4(),
         }
@@ -203,21 +180,40 @@ const SearchScreen = () => {
             purchases:[...activeClient.purchases.filter(purchase=>purchase.id!==purchaseIDtoAddTX), purchaseOBJ]
         }
         await AsyncStorage.setItem(activeClient.phone, JSON.stringify(finalobj));
+        if(lastSearchType === "all")
+        await findAllUsers();
+        else
+        await findUsers();
+        setActiveClient(finalobj);
         hideAddModal();
     };
+
+    const getTotals = (client) => {
+        let total=0;
+        let totalReceived=0;
+        if(Object.keys(client).length) {
+        for(const purchase of client.purchases) {
+            total+=purchase.amount;
+            for(const transaction of purchase.amountReceived) {
+                totalReceived+=transaction.amount;
+            }
+        }
+        }
+        return {total,totalReceived};
+    }
 
     return (
         <>        
         <ScrollView style={styles.container}>
             <View style={styles.header}>
                 <TextInput style={styles.input} placeholder='Enter Phone Number' maxLength={10} value={phone} onChangeText={setPhoneNumber} keyboardType="numeric" activeUnderlineColor="#114084" />
-                <TouchableOpacity style={styles.headerBTN} onPress={findAllUsers}><Text style={styles.BTNText}>Load All</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.headerBTN} onPress={()=>{setLastSearchType("all");findAllUsers();}}><Text style={styles.BTNText}>Load All</Text></TouchableOpacity>
             </View>
             {!!searchClients.length && searchClients.map(client => (
                 <View style={styles.searchItemWrapper} key={client.phone}>
                 <TouchableOpacity activeOpacity={0.7} style={styles.client} disabled >
                     <Text style={styles.clientText}>{client.name}</Text>
-                    <Text style={styles.clientText}>Total: {client.total}, Received: {client.totalReceived}, Due: {client.total-client.totalReceived}</Text>
+                    <Text style={styles.clientText}>Total: {getTotals(client).total}, Received: {getTotals(client).totalReceived}, Due: {getTotals(client).total-getTotals(client).totalReceived}</Text>
                 </TouchableOpacity>
                 <View style={styles.BTNWrapper}>
                     <TouchableOpacity style={{...styles.BTN, backgroundColor: "#3466AA"}} onPress={()=>{setActiveClient(client)}}><Text style={styles.BTNText}>View</Text></TouchableOpacity>
